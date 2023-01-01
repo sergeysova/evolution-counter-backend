@@ -1,15 +1,19 @@
 use std::net::SocketAddr;
 
 use axum::{
-    // See https://docs.rs/axum/latest/axum/extract/ws/index.html
     extract::ws::{Message, WebSocket, WebSocketUpgrade},
     http::StatusCode,
-    Json,
-    response::IntoResponse, Router,
+    response::{IntoResponse, Response},
     routing::{get, post},
+    Extension, Json, Router,
 };
 use serde::{Deserialize, Serialize};
 use tower_cookies::{Cookie, CookieManagerLayer, Cookies};
+
+#[derive(Clone)]
+struct AppState {
+    counter: i32,
+}
 
 #[tokio::main]
 async fn main() {
@@ -20,6 +24,8 @@ async fn main() {
         .route("/", get(root))
         .route("/users", post(create_user))
         .route("/register", get(register))
+        .route("/connect", get(connect))
+        .layer(Extension(AppState { counter: 0 }))
         .layer(CookieManagerLayer::new());
 
     let addr = SocketAddr::from(([127, 0, 0, 1], 4000));
@@ -32,6 +38,58 @@ async fn main() {
         .unwrap();
 }
 
+async fn connect(
+    ws: WebSocketUpgrade,
+    cookies: Cookies,
+    Extension(state): Extension<AppState>,
+) -> Response {
+    println!("Cookies: {:?}", cookies.list());
+    ws.on_upgrade(|socket| handle_socket(socket, state))
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(tag = "type", content = "message", rename_all = "lowercase")]
+enum MessageIncoming {
+    Welcome { hello: String },
+}
+
+#[derive(Debug, Serialize)]
+#[serde(tag = "type", content = "message", rename_all = "lowercase")]
+enum MessageOutgoing {
+    Thanks { name: String },
+}
+
+async fn handle_socket(mut socket: WebSocket, state: AppState) {
+    while let Some(msg) = socket.recv().await {
+        if let Ok(msg) = msg {
+            match msg {
+                Message::Text(text) => {
+                    if let Ok(message) = serde_json::from_str::<MessageIncoming>(&text) {
+                        match message {
+                            MessageIncoming::Welcome { hello } => {
+                                let answer = MessageOutgoing::Thanks { name: hello };
+                                if let Ok(str) = serde_json::to_string(&answer) {
+                                    if socket.send(Message::Text(str)).await.is_err() {
+                                        // client disconnected
+                                        return;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                Message::Close(close_frame) => {
+                    println!("message close {:?}", close_frame);
+                }
+                _ => {}
+            };
+        } else {
+            // client disconnected
+            return;
+        };
+    }
+}
+
 async fn root() -> &'static str {
     "Hello, World!"
 }
@@ -42,7 +100,10 @@ async fn register(cookies: Cookies) -> impl IntoResponse {
     cookie.set_http_only(Some(true));
     cookies.add(cookie);
 
-    Json(User { id: id.as_u64_pair().0, username: "Demo".to_string() })
+    Json(User {
+        id: id.as_u64_pair().0,
+        username: "Demo".to_string(),
+    })
 }
 
 #[derive(Deserialize)]
