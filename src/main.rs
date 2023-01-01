@@ -7,18 +7,28 @@ use axum::{
     routing::{get, post},
     Extension, Json, Router,
 };
+use fake::Fake;
+use rand::{random, Rng};
 use serde::{Deserialize, Serialize};
 use tower_cookies::{Cookie, CookieManagerLayer, Cookies};
+
+mod data_sources;
 
 #[derive(Clone)]
 struct AppState {
     counter: i32,
 }
 
+fn random_city() -> String {
+    use rand::{thread_rng, Rng};
+    data_sources::CITIES[thread_rng().gen_range(0..data_sources::CITIES.len())].to_string()
+}
+
 #[tokio::main]
 async fn main() {
     dotenv::dotenv().expect("Failed to read .env file");
     tracing_subscriber::fmt::init();
+    println!("Welcome to {}", random_city());
 
     let app = Router::new()
         .route("/", get(root))
@@ -103,6 +113,7 @@ async fn register(cookies: Cookies) -> impl IntoResponse {
     Json(User {
         id: id.as_u64_pair().0,
         username: "Demo".to_string(),
+        city: fake::faker::address::en::CityName().fake(),
     })
 }
 
@@ -115,12 +126,14 @@ struct CreateUser {
 struct User {
     id: u64,
     username: String,
+    city: String,
 }
 
 async fn create_user(Json(create_user_input): Json<CreateUser>) -> impl IntoResponse {
     let user = User {
         id: 13337,
         username: create_user_input.username,
+        city: fake::faker::address::en::CityName().fake(),
     };
 
     (StatusCode::CREATED, Json(user))
