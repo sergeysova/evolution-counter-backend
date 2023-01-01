@@ -4,6 +4,7 @@ use axum::{
     routing::{get, post},
     Json, Router,
 };
+use tower_cookies::{Cookies, CookieManagerLayer, Cookie};
 
 use serde::{Deserialize, Serialize};
 use std::net::SocketAddr;
@@ -15,9 +16,11 @@ async fn main() {
 
     let app = Router::new()
         .route("/", get(root))
-        .route("/users", post(create_user));
+        .route("/users", post(create_user))
+        .route("/register", get(register))
+        .layer(CookieManagerLayer::new());
 
-    let addr = SocketAddr::from(([127, 0, 0, 1], 3000));
+    let addr = SocketAddr::from(([127, 0, 0, 1], 4000));
 
     tracing::debug!("listening on {addr}");
 
@@ -29,6 +32,15 @@ async fn main() {
 
 async fn root() -> &'static str {
     "Hello, World!"
+}
+
+async fn register(cookies: Cookies) -> impl IntoResponse {
+    let id = uuid::Uuid::new_v4();
+    let mut cookie = Cookie::new("token", uuid::Uuid::new_v4().to_string());
+    cookie.set_http_only(Some(true));
+    cookies.add(cookie);
+
+    Json(User { id: id.as_u64_pair().0, username: "Demo".to_string() })
 }
 
 #[derive(Deserialize)]
