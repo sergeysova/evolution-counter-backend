@@ -1,13 +1,15 @@
-use axum::{
-    http::StatusCode,
-    response::IntoResponse,
-    routing::{get, post},
-    Json, Router,
-};
-use tower_cookies::{Cookies, CookieManagerLayer, Cookie};
-
-use serde::{Deserialize, Serialize};
 use std::net::SocketAddr;
+
+use axum::{
+    // See https://docs.rs/axum/latest/axum/extract/ws/index.html
+    extract::ws::{Message, WebSocket, WebSocketUpgrade},
+    http::StatusCode,
+    Json,
+    response::IntoResponse, Router,
+    routing::{get, post},
+};
+use serde::{Deserialize, Serialize};
+use tower_cookies::{Cookie, CookieManagerLayer, Cookies};
 
 #[tokio::main]
 async fn main() {
