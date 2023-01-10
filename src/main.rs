@@ -8,9 +8,10 @@ use axum::{
     Extension, Json, Router,
 };
 use fake::Fake;
-use rand::{random, Rng};
 use serde::{Deserialize, Serialize};
 use tower_cookies::{Cookie, CookieManagerLayer, Cookies};
+use utoipa::{IntoParams, OpenApi, ToSchema};
+use utoipa_swagger_ui::SwaggerUi;
 
 mod data_sources;
 
@@ -30,7 +31,12 @@ async fn main() {
     tracing_subscriber::fmt::init();
     println!("Welcome to {}", random_city());
 
+    #[derive(OpenApi)]
+    #[openapi(paths(create_user,), components(schemas(User, CreateUser)))]
+    struct ApiDoc;
+
     let app = Router::new()
+        .merge(SwaggerUi::new("/swagger-ui").url("/api-doc/openapi.json", ApiDoc::openapi()))
         .route("/", get(root))
         .route("/users", post(create_user))
         .route("/register", get(register))
@@ -117,24 +123,29 @@ async fn register(cookies: Cookies) -> impl IntoResponse {
     })
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, IntoParams, ToSchema)]
 struct CreateUser {
     username: String,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, ToSchema)]
 struct User {
     id: u64,
     username: String,
     city: String,
 }
 
-async fn create_user(Json(create_user_input): Json<CreateUser>) -> impl IntoResponse {
+#[utoipa::path(post, path = "/users", request_body = CreateUser, responses(
+(status = 200, description = "User created successfully", body = User)
+))]
+async fn create_user(Json(create_user_input): Json<CreateUser>) -> Json<User> {
     let user = User {
         id: 13337,
         username: create_user_input.username,
         city: fake::faker::address::en::CityName().fake(),
     };
 
-    (StatusCode::CREATED, Json(user))
+    Json(user)
+
+    // (StatusCode::CREATED, Json(user))
 }
